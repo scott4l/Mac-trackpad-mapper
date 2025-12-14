@@ -61,9 +61,43 @@ MTPoint _map(double normx, double normy) {
 }
 
 void moveCursor(double x, double y) {
-    CGPoint point = {
-        .x = x < 0 ? 0 : x >= screenSize.width ? screenSize.width - 1 : x,
-        .y = y < 0 ? 0 : y >= screenSize.height ? screenSize.height - 1: y,
+    // Simple stabiliser: ignore very small moves and smooth bigger ones
+    static double lastX = -1.0;
+    static double lastY = -1.0;
+
+    // Minimum movement (in screen pixels) before we move the cursor (change in settings.def.h / settings.h)
+    const double threshold = JITTER_THRESHOLD;
+    double alpha = JITTER_ALPHA;   // from settings
+
+    // Prevent alpha from being exactly 0 to avoid cursor freeze.
+    // If the user sets JITTER_ALPHA = 0 in settings, we clamp it to 0.1.
+    if (alpha <= 0.0) {
+        alpha = 0.1;
+    } else if (alpha > 1.0) {
+        alpha = 1.0;
+    }
+
+    if (lastX >= 0.0 && lastY >= 0.0) {
+        double dx = x - lastX;
+        double dy = y - lastY;
+        double dist2 = dx * dx + dy * dy;
+
+        // If the movement is tiny, ignore it completely
+        if (dist2 < threshold * threshold) {
+            return;
+        }
+
+        // Low-pass filter: move part-way toward the new point
+        x = lastX + alpha * dx;
+        y = lastY + alpha * dy;
+    }
+
+    lastX = x;
+    lastY = y;
+
+    CGPoint point = (CGPoint){
+        .x = x < 0 ? 0 : x >= screenSize.width  ? screenSize.width  - 1 : x,
+        .y = y < 0 ? 0 : y >= screenSize.height ? screenSize.height - 1 : y,
     };
 
     if (settings.useArg && settings.emitMouseEvent ||
@@ -126,6 +160,8 @@ int trackpadCallback(
         return 0;
     }
     
+
+    
     if (!startTrackTimeStamp) {
         startTrackTimeStamp = timestamp;
     }
@@ -148,7 +184,9 @@ int trackpadCallback(
         for (int i = 0; i < nFingers; i++) {
             gesturePaths[data[i].pathIndex] = true;
         }
-        moveCursor(fingerPosition.x, fingerPosition.y);
+        if (!(DISABLE_CURSOR_ON_MULTITOUCH && nFingers > 1)) {
+            moveCursor(fingerPosition.x, fingerPosition.y);
+        }
         oldFingerCount = nFingers;
         return 0;
     };
@@ -158,7 +196,9 @@ int trackpadCallback(
     if (gesturePhase == GESTURE_PHASE_BEGAN) {
         for (int i = 0; i < nFingers; i++) {
             if (gesturePaths[data[i].pathIndex]) {
-                moveCursor(fingerPosition.x, fingerPosition.y);
+                if (!(DISABLE_CURSOR_ON_MULTITOUCH && nFingers > 1)) {
+                    moveCursor(fingerPosition.x, fingerPosition.y);
+                }
                 return 0;
             }
         }
@@ -199,8 +239,11 @@ int trackpadCallback(
     } else {
         oldPathIndex = f->pathIndex;
     }
+
+    if (!(DISABLE_CURSOR_ON_MULTITOUCH && nFingers > 1)) {
+        moveCursor(fingerPosition.x, fingerPosition.y);
+    }
     
-    moveCursor(fingerPosition.x, fingerPosition.y);
 
     oldTimeStamp = timestamp;
     return 0;
