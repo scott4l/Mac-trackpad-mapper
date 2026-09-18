@@ -15,14 +15,21 @@ static inline double rangeRatio(double n, double lower, double upper) {
 
 // Compulsory: Modify this function to change how relative position of trackpad is mapped to normalized screen coordinates. Return negative number for invalid finger position
 static inline MTPoint map(double normx, double normy) {
-    // whole trackpad to whole screen
+    // 0.25 to 0.75 restricts input to the center 50% of your touchpad
+    double rx = rangeRatio(normx, 0.25, 0.75);
+    double ry = rangeRatio(normy, 0.25, 0.75);
+
+    // Ignore finger touches outside the small area
+    if (rx < 0 || ry < 0) {
+        MTPoint invalidPoint = { .x = -1.0, .y = -1.0 };
+        return invalidPoint;
+    }
+
+    // Scale the small active area to reach the entire screen
     MTPoint point = {
-        .x = normx,
-        .y = normy,
+        .x = rx * screenSize.width,
+        .y = ry * screenSize.height,
     };
-    //scaling the points up to the screen size
-    point.x *= screenSize.width;
-    point.y *= screenSize.height;
     return point;
 }
 
